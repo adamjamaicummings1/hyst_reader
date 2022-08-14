@@ -1,0 +1,122 @@
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import tkinter as tk
+import gspread
+matplotlib.use("TkAgg")
+
+sample_name = "G"
+# Need to download .json and label service_account.json then put in ~/.config/gspread/service_account.json
+sa = gspread.service_account()
+sh = sa.open("CrV thin films")
+wks = sh.worksheet("Sheet1")
+# meta = wks.get("A2:R24")
+# might be a faster way to do this with dictionaries
+
+for line in wks.get("A2:R24"):
+    if line[0].replace("/","") != "":
+        date = line[0].replace("/","")
+        power = line[2]
+    if line[1].upper()==sample_name.upper():
+        meta = line
+        # if line[1].lower()==i:
+        break
+# date = meta[0].replace("/","")
+
+dir = "/Users/adam/Google Drive/My Drive/Hilton/Sample %s/Hysteresis/"%sample_name
+# "%sample_name
+# raw = "%shyst%s.csv"%(dir,sample_name)
+
+# how to do bkg[anything][sample name].csv
+
+raw = "%shyst%s%s.csv"%(dir,date,sample_name)
+bkg = "%sbkg%s.csv"%(dir,date)
+ref = "/Users/adam/Google Drive/My Drive/Hilton/CrV/07212022/Hysteresis/Sample I/wit07222022c.csv"
+ref = 1
+
+
+# raw = "/Users/adam/Google Drive/My Drive/Hilton/Sample A/Hysteresis/old/Run 2/hyst06142022a2.csv"
+# bkg = "/Users/adam/Google Drive/My Drive/Hilton/Sample A/Hysteresis/old/Run 2/bkg06202022.csv"
+def wannasave(_raw,_bkg,smooth=False):
+    window = tk.Tk()
+    y = int((window.winfo_screenwidth()-250)/2)
+    x = int((window.winfo_screenheight()-70)/2)
+    window.geometry('250x70+650+450')
+    window.resizable(False,False)
+    def mysave(event=None):
+        plot_data(*process_data(_raw,_bkg,smooth),save=True)
+        window.quit()
+        return
+    def myquit(event):
+        window.quit()
+        return
+    label = tk.Label(text="Save plot?")
+    window.bind('<Return>', mysave)
+    window.bind('<Key-Escape>', myquit)
+    y = tk.Button(window,text= "Yes",command= mysave)
+    n = tk.Button(window,text= "No",command= lambda:window.quit())
+    label.pack()
+    y.pack()
+    n.pack()
+    window.mainloop()
+    return
+
+# get bkg, data, ref_data
+def manage_data(file,binary=False):
+    temp = []
+    reflectance = []
+    with open(file,"r") as data:
+        for line in data:
+            linarr = line.split("\t")
+            temp.append(np.double(linarr[1]))
+            reflectance.append(np.double(linarr[2].replace("\n","")))
+        data.close()
+    return (temp,reflectance)
+
+def process_data(data,bkg,smooth=False, n = 5):
+    reflect_corr = []
+    temp,reflectance = manage_data(data)
+    if smooth == True:
+        t_smooth = []
+        r_smooth = []
+        i=0
+        while i<=len(temp)-n:
+            t_smooth.append(np.sum(temp[i:i+n])/n)
+            r_smooth.append(np.sum(reflectance[i:i+n])/n)
+            i+=1
+        temp = t_smooth
+        reflectance = r_smooth
+    bkg_temp, bkg_reflect = manage_data(bkg)
+    avg_bkg = np.mean(bkg_reflect)
+    # Normalization!
+    norm = np.max(reflectance) - avg_bkg
+    #Normalize reflectance
+    for r in reflectance:
+        # how do we want to do this? What is the convention for normalization
+        reflect_corr.append((r - avg_bkg)/norm)
+    print(np.min(reflect_corr)-np.max(reflect_corr))
+    return [temp,reflect_corr]
+def plot_data(temp,reflectance,save=False):
+    fig1,ax1 = plt.subplots()
+    ax1.plot(temp,reflectance)
+    ax1.set_xlabel("Temperature (Celsius)")
+    ax1.set_ylabel("Reflectance (a.u.)")
+    ax1.set_title("%s %s %s Sample %s annealed at %s " % (date,meta[7],power,meta[1].upper(),meta[10]))
+    if save==True:
+        plt.savefig("%s%s_Hysteresis.png"%(dir,sample_name))
+        return
+    plt.show()
+    return
+
+
+smooth_data = True
+plot_data(*process_data(raw,bkg,smooth=smooth_data))
+wannasave(raw,bkg,smooth = smooth_data)
+switching = [13.5, 25.5, 27.1, 6.92, 8.3, 6.56, 8.27, 2.9,7.5,52,17,8.4]
+doping = [0, 30/300, 60/300, 70/300, 80/300, 90/300, 100/300, 110/300,30/300,30/300,30/300,60/300]
+# plt.scatter(doping,switching)
+# plt.title("Switching vs Cr:V power ratio")
+# plt.xlabel("Cr:V sputtering power ratio [unitless]")
+# plt.ylabel("Switching percent [%]")
+# plt.savefig("/Users/adam/Google Drive/My Drive/Hilton/switchingpeak.jpg")
+# plt.show()
